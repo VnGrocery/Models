@@ -9,7 +9,13 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from food_ai.config import CATEGORIES, DATA_DIR, MODEL_DIR, freshness_model
+from food_ai.config import (
+    CATEGORIES,
+    DATA_DIR,
+    FRESHNESS_CLASSES,
+    MODEL_DIR,
+    freshness_model,
+)
 from food_ai.data import create_loaders
 from food_ai.model import create_model
 
@@ -101,7 +107,7 @@ def main():
     train_root, valid_root, output_path = resolve_task(args)
 
     try:
-        train_loader, valid_loader, classes = create_loaders(
+        train_loader, valid_loader, test_loader, classes = create_loaders(
             train_root, valid_root, args.batch_size, args.workers
         )
     except (FileNotFoundError, ValueError) as error:
@@ -110,9 +116,21 @@ def main():
     if len(train_loader.dataset) == 0 or len(valid_loader.dataset) == 0:
         raise SystemExit("Dữ liệu train/valid đang rỗng.")
 
+    if args.task == "router" and set(classes) != set(CATEGORIES):
+        missing = sorted(set(CATEGORIES) - set(classes))
+        raise SystemExit(f"Router còn thiếu nhóm có dữ liệu: {missing}")
+    if args.task == "freshness":
+        unknown = sorted(set(classes) - set(FRESHNESS_CLASSES))
+        if unknown:
+            raise SystemExit(f"Nhãn độ tươi không hợp lệ: {unknown}")
+        if len(classes) < 2:
+            raise SystemExit("Expert cần ít nhất hai mức độ tươi có dữ liệu.")
+
     print(f"Task: {args.task} | lớp: {classes}")
     print(
-        f"Train: {len(train_loader.dataset)} | Valid: {len(valid_loader.dataset)}"
+        f"Train: {len(train_loader.dataset)} | "
+        f"Valid: {len(valid_loader.dataset)} | "
+        f"Test: {len(test_loader.dataset)}"
     )
     print(f"Thiết bị: {torch.cuda.get_device_name(0) if USE_CUDA else 'CPU'}")
 
@@ -177,6 +195,14 @@ def main():
         if stale_epochs >= 3:
             print("Early stopping: 3 epoch không cải thiện.")
             break
+
+    checkpoint = torch.load(output_path, map_location=DEVICE, weights_only=True)
+    model.load_state_dict(checkpoint["state_dict"])
+    test_loss, test_acc = run_epoch(model, test_loader, criterion)
+    print(
+        f"Kết quả test cuối cùng | accuracy {test_acc:.2f}% | "
+        f"loss {test_loss:.4f}"
+    )
 
 
 if __name__ == "__main__":

@@ -1,11 +1,38 @@
-﻿.venv/
+# Python environments
+.venv/
+venv/
+env/
+
+# Python cache and tooling
 __pycache__/
 *.py[cod]
+*.pyd
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
+
+# Training data and generated artifacts
+data/
+Dataset/
+models/
 gradcam_history/
 *.pth
-data/**/*.[jJ][pP][gG]
-data/**/*.[jJ][pP][eE][gG]
-data/**/*.[pP][nN][gG]
+*.pt
+*.onnx
+*.ckpt
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+~$*
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
