@@ -1,0 +1,11 @@
+﻿.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+gradcam_history/
+*.pth
+data/**/*.[jJ][pP][gG]
+data/**/*.[jJ][pP][eE][gG]
+data/**/*.[pP][nN][gG]
