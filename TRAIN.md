@@ -119,8 +119,8 @@ models/freshness/qua.pth
 Các tùy chọn chung phải đặt trước tên task:
 
 ```powershell
-python train.py --epochs 20 --batch-size 32 --workers 4 router
-python train.py --epochs 20 --batch-size 32 --workers 4 freshness --category gia_suc
+python train.py --epochs 20 --batch-size 32 --workers 4 --model mobilenet_v3_large --method fine_tune router
+python train.py --epochs 20 --batch-size 32 --workers 4 --model efficientnet_b0 --method fine_tune freshness --category gia_suc
 ```
 
 Ý nghĩa:
@@ -128,6 +128,14 @@ python train.py --epochs 20 --batch-size 32 --workers 4 freshness --category gia
 - `--epochs`: số epoch tối đa, mặc định `15`.
 - `--batch-size`: số ảnh trong mỗi batch, mặc định `32`.
 - `--workers`: số tiến trình nạp dữ liệu, mặc định tối đa `4`.
+- `--model`: kiến trúc model.
+- `--method`: `fine_tune` toàn mạng hoặc `head_only` chỉ classifier.
+- `--optimizer`: `adamw` hoặc `sgd`.
+- `--scheduler`: `plateau` hoặc `cosine`.
+- `--learning-rate`: bước cập nhật trọng số.
+- `--weight-decay`: regularization cho trọng số.
+- `--label-smoothing`: giảm mức quá tự tin của nhãn.
+- `--seed`: cố định phép tách dữ liệu và khởi tạo ngẫu nhiên.
 
 Với GPU 4 GB VRAM, bắt đầu bằng batch size `16` hoặc `32`. Nếu gặp lỗi hết
 VRAM, giảm xuống `8`:
@@ -137,6 +145,32 @@ python train.py --batch-size 8 router
 ```
 
 Model tự dừng nếu validation loss không cải thiện trong ba epoch.
+
+## Kết quả của mỗi lần train
+
+Mỗi lần train tạo một thư mục riêng trong `runs/`:
+
+```text
+runs/<timestamp>_<task>_<category>_<model>/
+  config.json       # toàn bộ tham số đầu vào và phiên bản thư viện
+  metrics.csv       # train/valid loss, accuracy, LR và thời gian từng epoch
+  best_model.pth    # checkpoint tốt nhất của riêng run
+  summary.json      # test accuracy, macro F1, precision/recall/F1 từng lớp
+```
+
+Checkpoint tốt nhất đồng thời được copy vào `models/` để pipeline dự đoán sử
+dụng. Chọn mục `Training results` trong menu để so sánh các run đã hoàn thành.
+
+## Tuning tham số
+
+Chọn `Hyperparameter tuning` trong menu hoặc chạy:
+
+```powershell
+python tune.py --task freshness --category cu --epochs 3
+```
+
+Tuning chạy các baseline model/phương pháp khác nhau và tạo leaderboard CSV.
+Ba epoch chỉ dùng sàng lọc nhanh; cấu hình thắng cần được train lại đủ epoch.
 
 Khi bắt đầu train, chương trình dùng seed `42` để tách cố định 20% ảnh trong tập
 train thành test nội bộ. Ảnh test không dùng augmentation và không tham gia cập

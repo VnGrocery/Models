@@ -18,6 +18,7 @@ data/
 Dataset/
 models/
 gradcam_history/
+runs/
 *.pth
 *.pt
 *.onnx

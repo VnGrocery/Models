@@ -1,10 +1,12 @@
 import subprocess
 import sys
+import json
 from pathlib import Path
 
 import torch
 
 from food_ai.config import CATEGORIES, CATEGORY_LABELS, DATA_DIR
+from food_ai.model import MODEL_NAMES, TRAINING_METHODS
 
 FRESHNESS_CLASSES = ("FRESH", "HALF-FRESH", "SPOILED")
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
@@ -46,10 +48,44 @@ def ask_positive_int(label: str, default: int) -> int:
         print("Please enter a positive integer.")
 
 
+def ask_positive_float(label: str, default: float) -> float:
+    while True:
+        value = input(f"{label} [{default:g}]: ").strip()
+        if not value:
+            return default
+        try:
+            parsed = float(value)
+            if parsed > 0:
+                return parsed
+        except ValueError:
+            pass
+        print("Please enter a positive number.")
+
+
+def choose(label: str, options: tuple[str, ...], default: str) -> str:
+    print(f"\n{label}:")
+    for index, option in enumerate(options, start=1):
+        suffix = " (default)" if option == default else ""
+        print(f"  {index}. {option}{suffix}")
+    value = input("Select: ").strip()
+    if not value:
+        return default
+    if value.isdigit() and 1 <= int(value) <= len(options):
+        return options[int(value) - 1]
+    print(f"Invalid selection; using {default}.")
+    return default
+
+
 def training_options() -> list[str]:
     epochs = ask_positive_int("Epochs", 15)
     batch_size = ask_positive_int("Batch size", 16)
     workers = ask_positive_int("Data workers", 4)
+    model = choose("Model architecture", MODEL_NAMES, "mobilenet_v3_large")
+    method = choose("Training method", TRAINING_METHODS, "fine_tune")
+    optimizer = choose("Optimizer", ("adamw", "sgd"), "adamw")
+    scheduler = choose("LR scheduler", ("plateau", "cosine"), "plateau")
+    learning_rate = ask_positive_float("Learning rate", 5e-4)
+    weight_decay = ask_positive_float("Weight decay", 1e-4)
     return [
         "--epochs",
         str(epochs),
@@ -57,6 +93,18 @@ def training_options() -> list[str]:
         str(batch_size),
         "--workers",
         str(workers),
+        "--model",
+        model,
+        "--method",
+        method,
+        "--optimizer",
+        optimizer,
+        "--scheduler",
+        scheduler,
+        "--learning-rate",
+        str(learning_rate),
+        "--weight-decay",
+        str(weight_decay),
     ]
 
 
@@ -112,6 +160,47 @@ def dataset_status() -> None:
             )
 
 
+def tune_parameters() -> None:
+    category = choose_category()
+    if not category:
+        return
+    epochs = ask_positive_int("Epochs per trial", 3)
+    run([
+        sys.executable,
+        "tune.py",
+        "--task",
+        "freshness",
+        "--category",
+        category,
+        "--epochs",
+        str(epochs),
+    ])
+
+
+def show_results() -> None:
+    run_root = Path("runs")
+    summaries = []
+    for path in run_root.glob("*/summary.json") if run_root.exists() else []:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            config = json.loads((path.parent / "config.json").read_text(encoding="utf-8"))
+            summaries.append((path.parent.name, config, payload))
+        except (OSError, ValueError):
+            continue
+
+    if not summaries:
+        print("No completed training runs found.")
+        return
+    print("\nCompleted runs (newest first)")
+    print("=" * 110)
+    for name, config, summary in sorted(summaries, reverse=True)[:20]:
+        print(
+            f"{name} | {config['model']}/{config['method']} | "
+            f"test={summary['test_accuracy']:.2f}% | "
+            f"F1={summary['macro_f1']:.4f} | best epoch={summary['best_epoch']}"
+        )
+
+
 def show_help() -> None:
     print(
         """
@@ -135,6 +224,14 @@ HELP
    Counts supported image files for every category, freshness class, and
    split. MISSING means that training data or validation data is absent.
 
+5. Hyperparameter tuning
+   Runs a short, controlled grid of model architectures, transfer-learning
+   methods, and learning rates. Each trial is stored separately.
+
+6. Training results
+   Lists completed runs with model, method, test accuracy, macro F1, and the
+   best epoch.
+
 Training settings
 -----------------
 Epochs controls the maximum training passes. Batch size controls GPU memory
@@ -145,6 +242,7 @@ Output models
 -------------
 Router: models/router.pth
 Experts: models/freshness/<category>.pth
+Experiments: runs/<timestamp>_<run-name>/
 
 The estimated freshness score is image-based and must not be treated as a
 food-safety certification.
@@ -180,6 +278,8 @@ Food Freshness AI
 2. Train freshness expert
 3. Predict an image
 4. Dataset status
+5. Hyperparameter tuning
+6. Training results
 H. Help (English)
 Q. Quit
 """.rstrip()
@@ -193,6 +293,8 @@ def main() -> None:
         "2": train_expert,
         "3": predict_image,
         "4": dataset_status,
+        "5": tune_parameters,
+        "6": show_results,
         "h": show_help,
         "help": show_help,
     }
