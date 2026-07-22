@@ -58,6 +58,7 @@ def parse_args():
     parser.add_argument("--label-smoothing", type=float, default=0.05)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--run-name")
+    parser.add_argument("--resume")
 
     subparsers = parser.add_subparsers(dest="task", required=True)
     subparsers.add_parser("router", help="Huấn luyện nhận diện 5 nhóm")
@@ -171,9 +172,10 @@ def main():
     except (FileNotFoundError, ValueError) as error:
         raise SystemExit(f"Dữ liệu chưa sẵn sàng: {error}") from error
 
-    if args.task == "router" and set(classes) != set(CATEGORIES):
+    if args.task == "router":
         missing = sorted(set(CATEGORIES) - set(classes))
-        raise SystemExit(f"Router còn thiếu nhóm có dữ liệu: {missing}")
+        if missing:
+            print(f"Cảnh báo: router thiếu nhóm dữ liệu {missing}; train theo các nhóm hiện có.")
     if args.task == "freshness":
         unknown = sorted(set(classes) - set(FRESHNESS_CLASSES))
         if unknown:
@@ -210,6 +212,10 @@ def main():
 
     model = create_model(len(classes), args.model, pretrained=True)
     model = configure_training_method(model, args.model, args.method).to(DEVICE)
+    if args.resume:
+        checkpoint = torch.load(args.resume, map_location=DEVICE, weights_only=False)
+        model.load_state_dict(checkpoint["state_dict"])
+        print(f"Resume weights: {args.resume}")
     if USE_CUDA:
         model = model.to(memory_format=torch.channels_last)
 
@@ -294,7 +300,7 @@ def main():
             print("Early stopping: 3 epoch không cải thiện.")
             break
 
-    checkpoint = torch.load(run_checkpoint, map_location=DEVICE, weights_only=True)
+    checkpoint = torch.load(run_checkpoint, map_location=DEVICE, weights_only=False)
     model.load_state_dict(checkpoint["state_dict"])
     test_loss, test_acc, confusion = run_epoch(
         model, test_loader, criterion, len(classes)

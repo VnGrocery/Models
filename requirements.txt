@@ -3,3 +3,5 @@ torchvision
 Pillow
 opencv-python
 numpy
+onnx
+onnxscript
